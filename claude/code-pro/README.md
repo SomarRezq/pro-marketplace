@@ -42,7 +42,7 @@ Skills without an agent (`develop`, `bug-fix`, `test`, small `refactor`) run inl
 From the `pro-marketplace` marketplace:
 
 ```bash
-/plugin marketplace add somarrezq/pro-marketplace
+/plugin marketplace add SomarRezq/pro-marketplace
 ```
 
 ```bash

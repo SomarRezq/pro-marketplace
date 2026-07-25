@@ -11,7 +11,7 @@ by re-running the marketplace update.
 Add the marketplace:
 
 ```bash
-/plugin marketplace add somarrezq/pro-marketplace
+/plugin marketplace add SomarRezq/pro-marketplace
 ```
 
 Then install a plugin from it:
