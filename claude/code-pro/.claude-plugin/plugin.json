@@ -1,0 +1,8 @@
+{
+  "name": "code-pro",
+  "description": "Code like a professional senior full-stack developer. Covers the full development lifecycle: investigate, develop, develop-fr (full features), bug-fix, code-review, test, regression-test, refactor, create-docs.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Somar"
+  }
+}

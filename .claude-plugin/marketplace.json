@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "pro-marketplace",
+  "owner": {
+    "name": "Somar",
+    "email": "somar.rezq@gmail.com"
+  },
+  "metadata": {
+    "description": "Somar's marketplace of AI plugins, skills, and agents. Professional, production-grade workflows for AI coding assistants.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "code-pro",
+      "source": "./claude/code-pro",
+      "description": "Code like a professional senior full-stack developer. Full lifecycle: investigate, develop, develop-fr, bug-fix, code-review, test, regression-test, refactor, create-docs.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Somar"
+      },
+      "homepage": "https://github.com/somarrezq/pro-marketplace/tree/main/claude/code-pro",
+      "license": "MIT",
+      "category": "development",
+      "keywords": [
+        "development",
+        "code-review",
+        "testing",
+        "refactoring",
+        "documentation",
+        "agents",
+        "workflow"
+      ]
+    }
+  ]
+}
