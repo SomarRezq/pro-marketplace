@@ -15,3 +15,6 @@ desktop.ini
 *.zip
 *.tgz
 node_modules/
+
+# Office temp/lock files
+~$*
