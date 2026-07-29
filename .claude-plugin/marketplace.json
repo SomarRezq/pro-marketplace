@@ -6,8 +6,8 @@
     "email": "somar.rezq@gmail.com"
   },
   "metadata": {
-    "description": "Somar's marketplace of AI plugins, skills, and agents. Professional, production-grade workflows for AI coding assistants.",
-    "version": "1.0.0"
+    "description": "Somar's marketplace of AI plugins, skills, and agents for Claude Code and Codex. Professional, production-grade workflows for AI coding assistants.",
+    "version": "1.1.0"
   },
   "plugins": [
     {
