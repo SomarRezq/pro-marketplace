@@ -172,7 +172,10 @@ built-ins only.
 
 ## Full specification
 
-The original design specification is in
-[`docs/Code-pro-Plugin-Specification.pdf`](../../docs/Code-pro-Plugin-Specification.pdf).
-The v2.0.0 delegation refactor is specified in
-[`docs/REFACTOR-PLAN.md`](../../docs/REFACTOR-PLAN.md).
+The complete specification — updated to v2.0, covering the delegation pipeline, the brief
+contract, lanes, and build instructions — is in
+[`docs/Code-pro-Plugin-Specification.pdf`](../../docs/Code-pro-Plugin-Specification.pdf)
+([editable .docx](../../docs/Code-pro-Plugin-Specification.docx)).
+
+The refactor that produced v2.0, including what live testing taught and what remains
+unverified, is in [`docs/REFACTOR-PLAN.md`](../../docs/REFACTOR-PLAN.md).
