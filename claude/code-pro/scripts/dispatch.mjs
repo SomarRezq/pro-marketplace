@@ -8,7 +8,7 @@
 //   3. normalize its result.json into a Digest the orchestrator can read in ~20 lines
 //
 //   node dispatch.mjs --brief <file> --lane <name> [--cd <repo>] [--result <file>]
-//                     [--session <id>] [--timeout <dur>] [--dry-run] [--json]
+//                     [--session <id>] [--timeout <dur>] [--allow-shell] [--dry-run] [--json]
 //
 // Exit codes: 0 done · 1 executor failed/needs-changes · 2 usage · 3 no external
 // implementer for this lane (orchestrator must use the in-Claude fallback agent).
@@ -21,6 +21,8 @@ import {
   loadFleet,
   resolveLane,
   IMPLEMENTER_LABELS,
+  IMPLEMENTER_CAPS,
+  NO_SHELL_NOTE,
   parseArgs,
   run,
   gitRoot,
@@ -31,9 +33,14 @@ const args = parseArgs(process.argv.slice(2));
 if (args.help || args.h) {
   process.stdout.write(
     "Usage: node dispatch.mjs --brief <file> --lane <name> [--cd <repo>] [--result <file>]\n" +
-      "                        [--session <id>] [--timeout <dur>] [--dry-run] [--json]\n\n" +
+      "                        [--session <id>] [--timeout <dur>] [--allow-shell]\n" +
+      "                        [--dry-run] [--json]\n\n" +
       "Exit 3 means no external implementer is available for this lane and the\n" +
-      "orchestrator must fall back to the in-Claude subagent for that role.\n"
+      "orchestrator must fall back to the in-Claude subagent for that role.\n\n" +
+      "--allow-shell lets an implementer that cannot otherwise run commands do so\n" +
+      "(Antigravity: --dangerously-skip-permissions). That is full access, so opt in\n" +
+      "only with the user's explicit consent. Without it, such a brief is augmented to\n" +
+      "tell the implementer not to run the gates, and the orchestrator runs them.\n"
   );
   process.exit(0);
 }
@@ -71,9 +78,33 @@ if (!lane.ok) {
   process.exit(lane.fallbackToClaude ? 3 : 2);
 }
 
+// ---- adapt the brief to the implementer's capabilities -------------------
+// Antigravity's print mode denies every shell command, then dies with no report the
+// moment a brief tells it to run the gates. Rather than lose the work and the
+// explanation, tell it not to run them — the orchestrator re-runs gates anyway.
+const caps = IMPLEMENTER_CAPS[lane.implementer] || { shell: true };
+const allowShell = Boolean(args["allow-shell"]);
+let effectiveBrief = briefPath;
+let briefAugmented = false;
+
+if (!caps.shell && !allowShell) {
+  const augmented = readFileSync(briefPath, "utf8").replace(/\s*$/, "") + NO_SHELL_NOTE;
+  // Written next to the result so the exact text sent is auditable, never hidden.
+  effectiveBrief = typeof args.result === "string"
+    ? path.resolve(args.result).replace(/(\.md)?$/, ".effective-brief.md")
+    : path.join(mkdtempSync(path.join(tmpdir(), "code-pro-brief-")), "brief.md");
+  mkdirSync(path.dirname(effectiveBrief), { recursive: true });
+  writeFileSync(effectiveBrief, augmented, "utf8");
+  briefAugmented = true;
+}
+
 // ---- build the relay invocation -----------------------------------------
 const outDir = mkdtempSync(path.join(tmpdir(), `code-pro-${laneName}-`));
-const relayArgs = [lane.relay, "--brief", briefPath, "--cd", repo, "--out-dir", outDir];
+const relayArgs = [lane.relay, "--brief", effectiveBrief, "--cd", repo, "--out-dir", outDir];
+
+// Opt-in only, and only for an implementer that documents such a flag. The relays treat
+// this as full access, so it must be the human's explicit choice, never a default.
+if (allowShell && caps.shellOptIn) relayArgs.push(caps.shellOptIn);
 
 // The relay resolves its own dials from the fleet config when --lane is usable;
 // otherwise we pass the dials explicitly so a default lane still gets its settings.
@@ -99,6 +130,9 @@ if (args["dry-run"]) {
     lane: laneName,
     implementer: lane.implementer,
     dials: lane.dials,
+    shell: caps.shell || allowShell,
+    briefAugmented,
+    effectiveBrief,
     command: [process.execPath, ...relayArgs],
     degradations: lane.degradations,
   };
@@ -175,6 +209,8 @@ const digestLines = [
   `open: ${openMatch ? openMatch[1].trim() : "none"}`,
 ];
 if (raw.readOnlyViolation) digestLines.push("WARNING: read-only lane reported a write violation");
+if (briefAugmented)
+  digestLines.push("note: implementer cannot run shell — gates were NOT run by it, you must run them");
 for (const d of lane.degradations || []) digestLines.push(`degraded: ${d}`);
 
 const body = [

@@ -76,6 +76,33 @@ For the token savings you want all three:
 
 Run `/code-pro-doctor` to check all of it at once.
 
+### What each implementer can do
+
+| Implementer | Edits files | Runs your gates |
+|---|---|---|
+| `codex` | yes | **yes** — runs tests/lint and reports real results |
+| `agy` (Gemini) | yes | **no** — Antigravity's print mode denies every shell command |
+
+`dispatch.mjs` handles the difference automatically: a brief bound for Antigravity gets an
+appended note telling it not to run the gates (the exact text sent is saved as
+`<result>.effective-brief.md`), and the Digest reminds the orchestrator that the gates are
+its job. This costs nothing — the orchestrator re-runs the gates on every step anyway,
+because a self-reported pass was never proof. `dispatch.mjs --allow-shell` opts into
+Antigravity's `--dangerously-skip-permissions` instead; that is full access, so only use it
+if you explicitly want it.
+
+### Verified on
+
+Confirmed working end to end on 2026-08-21 with live dispatches in both directions:
+
+| | Version | Live test |
+|---|---|---|
+| `codex` | 0.149.0 (`gpt-5.2-codex`, xhigh) | read-only review ✅ · wrote a test file, ran `node --test`, reported the real pass ✅ |
+| `agy` | 1.1.17 (`gemini-3.1-pro-high`) | read-only review ✅ · wrote code matching the quoted convention, deferred gates ✅ |
+
+Codex **must** be reasonably current — an old CLI is rejected server-side for newer default
+models. 0.80.0 failed both ways; 0.149.0 works.
+
 ## ⚙️ LANE CONFIGURATION — EDIT HERE
 
 Lanes bind a kind of work to an implementer. They live in **your** delegate-skills fleet

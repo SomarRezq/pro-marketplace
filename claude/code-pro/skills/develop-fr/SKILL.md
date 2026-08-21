@@ -145,7 +145,9 @@ solution-architect with both reviews attached, and mark the step `blocked` if it
 unresolved.
 
 **3d — verify the gates yourself.** This is the one place you touch the repo directly, and
-it is cheap — a command and an exit code:
+it is cheap — a command and an exit code. Some implementers cannot run shell commands at
+all (Antigravity/Gemini), so for those steps the Digest says `gates: not run (orchestrator
+verifies)` — this phase is the only thing standing between that step and a broken build:
 
 ```bash
 <the project's real test/lint/build commands>

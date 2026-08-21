@@ -48,6 +48,45 @@ export const IMPLEMENTER_BINARIES = {
   warp: "oz",
 };
 
+/**
+ * What each implementer can actually do in the non-interactive mode the relays use.
+ *
+ * `shell: false` is the important one. Antigravity's print mode soft-denies every
+ * RunCommand — it will happily edit files, then die with no final report the moment a
+ * brief asks it to run a test. Verified against agy 1.1.17; `--sandbox` does not change
+ * it. So briefs bound for such an implementer must tell it NOT to run the gates, and the
+ * orchestrator runs them instead (which phase 3d does anyway).
+ */
+export const IMPLEMENTER_CAPS = {
+  codex: { shell: true },
+  claude: { shell: true },
+  copilot: { shell: true },
+  opencode: { shell: true },
+  cursor: { shell: true },
+  agy: { shell: false, shellOptIn: "--dangerously-skip-permissions" },
+};
+
+/** Note appended to a brief when the implementer cannot run shell commands. */
+export const NO_SHELL_NOTE = `
+
+---
+
+## Execution environment (added automatically by code-pro)
+
+**You cannot run shell commands in this environment.** Any attempt to run one will be
+denied and will end your run with no report, losing all of your work's explanation.
+
+Therefore:
+
+- **Do not run the gate commands** listed above, or tests, builds, linters, or git.
+- Write the code so those gates *would* pass. The orchestrator runs them itself after you
+  finish and will send the failures back to you if any.
+- Report \`gates: not run (orchestrator verifies)\` in your final message.
+
+Everything else in this brief still applies — especially editing the files you were asked
+to edit, and reporting in the required format.
+`;
+
 /** Human labels, for reports. */
 export const IMPLEMENTER_LABELS = {
   codex: "Codex",

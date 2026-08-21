@@ -1,10 +1,13 @@
 # code-pro Refactor — Execution Plan
 
-**Status:** awaiting approval · **Date:** 2026-08-21 · **Target version:** code-pro `2.0.0`
+**Status:** IMPLEMENTED · **Date:** 2026-08-21 · **Version:** code-pro `2.0.0`
 
 Refactor `claude/code-pro` so that Claude is spent only where reasoning is scarce, and the
 bulk of implementation, test-writing, QA, and per-step review is burned on Codex and
-Gemini. Remove the `codex/` plugin port. Nothing here is implemented yet.
+Gemini. Remove the `codex/` plugin port.
+
+This plan has been implemented — see [§16 Implementation notes](#16-implementation-notes-added-after-execution)
+for what was learned during execution and what remains unverified.
 
 ---
 
@@ -335,6 +338,58 @@ Not "it looks right" — these are the actual checks before calling it done.
 - No `gemini/` folder and no custom Gemini relay (Gemini arrives via `agy`).
 - No context-percentage hook.
 - No changes to delegate-skills itself; we consume it as-is.
+
+---
+
+## 16. Implementation notes (added after execution)
+
+The plan was implemented as written. Three things were learned in the process that the
+plan did not anticipate; all are now encoded in the code and docs.
+
+**Codex 0.80.0 was too old to run at all.** Both failure modes traced to the stale CLI:
+its server-assigned default (`gpt-5.5`) was rejected as *"requires a newer version of
+Codex"*, and the configured `gpt-5.2-codex` came back as *"not supported when using Codex
+with a ChatGPT account"*. Upgrading to 0.149.0 fixed both, and the configured
+`gpt-5.2-codex` at xhigh then worked unchanged. This is the risk row "Codex model labels
+drift" arriving early — the mitigation held: the failure surfaced loudly with the server's
+own message rather than corrupting a run.
+
+**Antigravity cannot run shell commands.** Its print mode soft-denies every `RunCommand`,
+so a brief telling it to run the gates ends the run with *no final message at all* — the
+file edits land, but the report is lost and the relay reports failure. `--sandbox` does not
+change this. `dispatch.mjs` now knows each implementer's capabilities and, for a shell-less
+one, appends an execution-environment note telling it not to run the gates and to report
+`gates: not run (orchestrator verifies)`. The exact augmented text is written to
+`<result>.effective-brief.md` so nothing is hidden, and the Digest carries a reminder that
+the gates are the orchestrator's job. `--allow-shell` opts into
+`--dangerously-skip-permissions` for users who want it.
+
+This turned out to cost nothing, because §3 phase 3d already had the orchestrator re-running
+every gate itself and never trusting a self-report. The design's distrust of executors paid
+for itself before the first real feature ran.
+
+**A lane from the plugin's defaults must not be passed as `--lane` to a relay.** The relay
+resolves `--lane` against the *fleet config*, which cannot see a plugin default — so the
+`review` lane would have failed on every dispatch. `resolveLane` now tracks whether a lane
+came from the fleet and passes explicit `--model`/`--effort`/`--read-only` flags otherwise.
+
+### Verification performed
+
+| Check | Result |
+|---|---|
+| `/code-pro-doctor` | fully delegating, all 6 lanes resolve |
+| Lane resolution | fleet lane, plugin-default lane, unknown lane, rework session flags |
+| Live Codex read-only | verdict parsed from the executor's own report contract |
+| Live Codex write (`tests`) | wrote a test file, ran `node --test`, reported the real pass |
+| Live Gemini read-only | same, via `agy` / `gemini-3.1-pro-high` |
+| Live Gemini write (`feature`) | wrote code matching the quoted convention, deferred gates, orchestrator's gate run passed |
+| Degradation | PATH stripped of codex+agy → all lanes fell back, 8 degradations reported |
+| Plan validation | cycles, unknown deps, self-deps, duplicate ids all rejected |
+| Dependency scheduling | correct parallel waves; blockers surfaced |
+| Cold-start resume | `latest` + `digest` recovers full state |
+
+Still unverified until a real feature runs: the §13.4 token check, and whether the
+architect writes briefs a blind model can execute. Those need a live `/develop-fr`.
 
 ---
 

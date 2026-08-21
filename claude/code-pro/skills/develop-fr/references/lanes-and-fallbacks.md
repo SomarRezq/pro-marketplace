@@ -45,6 +45,40 @@ labels; `gemini-3.1-pro-high` is the strong one, `gemini-3.7-flash-high` the che
 
 The standalone `gemini` CLI has no relay and is not used.
 
+## Implementer capabilities
+
+Implementers differ in what they can do in the non-interactive mode the relays use. One
+difference matters enough to be encoded in `dispatch.mjs`:
+
+| Implementer | Edits files | Runs shell commands |
+|---|---|---|
+| `codex` | yes | **yes** — runs the gates and reports real results |
+| `agy` (Gemini) | yes | **no** — print mode soft-denies every `RunCommand` |
+| `claude`, `copilot`, `opencode`, `cursor` | yes | yes |
+
+**Antigravity cannot run your gates.** In print mode it denies every shell command, and if
+a brief tells it to run one, the run ends with *no final message at all* — you lose the
+report even though the file edits succeeded. Verified against `agy 1.1.17`; passing
+`--sandbox` does **not** change it.
+
+`dispatch.mjs` handles this automatically. For an implementer with `shell: false` it
+appends an execution-environment note to the brief telling it not to run the gates and to
+report `gates: not run (orchestrator verifies)`. The exact text sent is written next to the
+result as `<result>.effective-brief.md`, so nothing is hidden from you, and the Digest
+carries a line reminding you the gates are yours to run:
+
+```
+note: implementer cannot run shell — gates were NOT run by it, you must run them
+```
+
+This costs nothing, because phase 3d has the orchestrator re-run the gates regardless — a
+self-reported "gates passed" was never trusted anyway.
+
+**Opting out:** `dispatch.mjs --allow-shell` passes Antigravity's
+`--dangerously-skip-permissions` instead, which auto-approves its tool permission requests.
+The relay documents that as full access. Use it only when the user has explicitly asked
+for it — never as a default.
+
 ## Dials
 
 Only dials that implementer supports are valid. The ones this pipeline uses:

@@ -62,7 +62,9 @@ Makefile. Never invent them.
     npm run lint
     npm test -- src/health
 
-Run these yourself before reporting. Report the actual output, not your belief about it.
+Run these before reporting and report the actual output, not your belief about it.
+(Shell-less implementers are told not to run them — see "Gates and who runs them" below.
+Either way the orchestrator re-runs them.)
 
 ## Definition of done
 - [ ] <checkable condition>
@@ -101,6 +103,21 @@ open: none
 `dispatch.mjs` builds this automatically from the relay's `result.json`, preferring the
 executor's own `verdict:` line over an inferred one — so a `needs-decision` is never
 silently downgraded to `done`.
+
+## Gates and who runs them
+
+Always list the project's real gate commands in the brief. What differs is who runs them:
+
+- **Codex and the other shell-capable implementers** run them and report real results.
+- **Antigravity (Gemini) cannot run shell commands at all.** `dispatch.mjs` detects this
+  and automatically appends a note telling it not to run the gates and to report
+  `gates: not run (orchestrator verifies)`. You do not write that note yourself — but do
+  keep the Gates section in the brief, because the implementer still needs to know what
+  its code must satisfy.
+
+Either way **you re-run the gates yourself** in phase 3d before marking a step done. A
+self-reported pass was never proof. See
+[lanes-and-fallbacks.md](lanes-and-fallbacks.md#implementer-capabilities).
 
 ## Verdicts
 
