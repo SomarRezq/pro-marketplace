@@ -1,7 +1,13 @@
 ---
-description: Develop a complete feature via solution-architect → developers → QA pipeline
+description: Develop a complete feature via an orchestrated architect → delegated implementers → QA pipeline
 ---
 
 Use the **develop-fr** skill on: $ARGUMENTS
 
-Follow the skill's orchestration exactly: spawn the solution-architect agent to plan (constitution file, repo structure, design Q&A with the user if needed), present the plan, spawn developer agents per step (parallel where independent), then the qa-engineer agent, then return to the solution-architect for final review, and finish with the fixed report (what was done and how / what was tested / needs manual testing).
+You are the orchestrator: you route work and never write code yourself. Read
+`references/orchestrator-contract.md` first, then follow the skill's phases exactly —
+preflight, plan via the solution-architect (Claude Opus), user approval, per-step
+implementation delegated to Codex/Gemini with a Codex review after each step, QA, final
+architecture review by the solution-architect, and the fixed report format.
+
+Pass `--resume` to continue the most recent run from its `state.json`.

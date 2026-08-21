@@ -1,6 +1,0 @@
-{
-  "name": "code-pro",
-  "version": "1.0.0",
-  "description": "Code like a professional senior full-stack developer. Full lifecycle: investigate, develop, develop-fr, bug-fix, code-review, test, regression-test, refactor, create-docs.",
-  "skills": "./skills/"
-}

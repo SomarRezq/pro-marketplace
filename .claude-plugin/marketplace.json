@@ -6,15 +6,15 @@
     "email": "somar.rezq@gmail.com"
   },
   "metadata": {
-    "description": "Somar's marketplace of AI plugins, skills, and agents for Claude Code and Codex. Professional, production-grade workflows for AI coding assistants.",
-    "version": "1.1.0"
+    "description": "Somar's marketplace of AI plugins, skills, and agents for Claude Code. Professional, production-grade workflows for AI coding assistants.",
+    "version": "1.2.0"
   },
   "plugins": [
     {
       "name": "code-pro",
       "source": "./claude/code-pro",
-      "description": "Code like a professional senior full-stack developer. Full lifecycle: investigate, develop, develop-fr, bug-fix, code-review, test, regression-test, refactor, create-docs.",
-      "version": "1.0.0",
+      "description": "Code like a professional senior full-stack developer. Full lifecycle: investigate, develop, develop-fr, bug-fix, code-review, test, regression-test, refactor, create-docs. develop-fr reserves Claude Opus for architecture and delegates implementation, testing, and per-step review to Codex and Gemini.",
+      "version": "2.0.0",
       "author": {
         "name": "Somar"
       },
@@ -28,7 +28,10 @@
         "refactoring",
         "documentation",
         "agents",
-        "workflow"
+        "workflow",
+        "delegation",
+        "codex",
+        "gemini"
       ]
     }
   ]
