@@ -76,6 +76,17 @@ For the token savings you want all three:
 
 Run `/code-pro-doctor` to check all of it at once.
 
+### Optional: surviving quota exhaustion
+
+The degradation ladder handles an implementer that is *missing*. It does not handle one
+that is installed, authenticated, and **out of quota** — that just fails the dispatch.
+
+[`delegate-backup`](https://github.com/SomarRezq/pro-marketplace/tree/main/claude/delegate-backup)
+(`/plugin install delegate-backup@pro-marketplace`) swaps an exhausted lane onto a backup
+implementer and schedules its return for when the provider's window resets. It is a
+**soft dependency** — without it nothing changes; with it, preflight additionally reports
+any lane currently running on a backup and when it comes back.
+
 ### What each implementer can do
 
 | Implementer | Edits files | Runs your gates |

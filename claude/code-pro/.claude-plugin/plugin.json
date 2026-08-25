@@ -1,7 +1,7 @@
 {
   "name": "code-pro",
   "description": "Code like a professional senior full-stack developer. Full lifecycle: investigate, develop, develop-fr, bug-fix, code-review, test, regression-test, refactor, create-docs. develop-fr reserves Claude Opus for architecture and delegates implementation, testing, and per-step review to Codex and Gemini.",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "author": {
     "name": "Somar"
   }

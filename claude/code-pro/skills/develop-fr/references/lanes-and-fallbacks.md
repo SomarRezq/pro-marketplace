@@ -123,6 +123,30 @@ Every degradation is printed once at the start of a run and recorded in
 `01-preflight.json`. Never let one be silent — a silently-Claude run defeats the purpose of
 the whole pipeline, and the user should get to decide whether to proceed.
 
+## Quota exhaustion — the `delegate-backup` plugin (optional)
+
+The degradation ladder above handles an implementer that is **missing**. It does not
+handle one that is **installed, authenticated, and out of quota** — that surfaces as a
+failed dispatch, because `usable` only means "binary on PATH and relay installed".
+
+[`delegate-backup`](https://github.com/SomarRezq/pro-marketplace/tree/main/claude/delegate-backup)
+covers that case. It swaps an exhausted lane onto a configured backup implementer and
+schedules the lane's automatic return for when the provider's window resets, keeping all
+its state in a `lane-backups.json` sidecar so this pipeline's fleet config is untouched.
+
+It is a **soft dependency**. Without it the pipeline runs exactly as before — an
+exhausted lane simply fails its dispatch and you retune by hand. With it installed,
+preflight prints an extra `Lane backups (active)` block naming any lane currently on a
+backup and when it returns. That block matters: a lane on a backup is being executed by
+a different provider than your config says, and that must never be invisible.
+
+Run `delegate-backup resolve --all` at the start of a session to put back anything whose
+window has passed — it is the safety net for a scheduled restore that never fired.
+
+**Do not swap on every dispatch failure.** Only genuine quota exhaustion qualifies. In
+particular, Z.AI's `Insufficient balance or no resource package` (error 1113) is a
+*configuration* error — wrong endpoint or a model outside the plan — not exhaustion.
+
 ## Checking your setup
 
 ```bash

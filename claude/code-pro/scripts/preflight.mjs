@@ -6,7 +6,7 @@
 //
 // Exit codes: 0 = fully delegating, 1 = running degraded, 2 = usage error.
 
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
   REQUIRED_LANES,
@@ -133,6 +133,37 @@ if (missingLanes.length && fleet.source !== "plugin-default") {
           ? '{ "implementer": "codex" }'
           : '{ "implementer": "codex" }';
     L.push(`    "${lane}": ${suggestion},`);
+  }
+}
+
+// Lane backups (delegate-backup plugin) — a SOFT dependency. We read its sidecar
+// directly rather than shelling out, so a missing plugin costs one informational line
+// instead of a failure. A lane sitting on a backup changes which provider runs the
+// work, so it must never be invisible at the top of a run.
+const backupsPath = path.join(path.dirname(globalFleetPath()), "lane-backups.json");
+if (existsSync(backupsPath)) {
+  try {
+    const doc = JSON.parse(readFileSync(backupsPath, "utf8"));
+    const active = Object.entries(doc.active ?? {});
+    if (active.length) {
+      L.push("");
+      L.push("Lane backups (active)");
+      for (const [lane, a] of active) {
+        const due = new Date(a.expiresAt).getTime();
+        const overdue = due <= Date.now();
+        const mins = Math.max(0, Math.round((due - Date.now()) / 60000));
+        L.push(
+          `  ${overdue ? "DUE " : "OK  "} ${lane.padEnd(8)} on ${String(a.wrote?.implementer).padEnd(9)}` +
+            ` → back to ${String(a.original?.implementer).padEnd(9)}` +
+            (overdue
+              ? "  OVERDUE — run: delegate-backup resolve --all"
+              : `  in ${Math.floor(mins / 60)}h ${mins % 60}m`)
+        );
+      }
+    }
+  } catch {
+    L.push("");
+    L.push(`  WARN lane-backups.json is unreadable (${backupsPath})`);
   }
 }
 

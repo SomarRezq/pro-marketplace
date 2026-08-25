@@ -1,0 +1,14 @@
+{
+  "$comment": "Copy to ~/.config/delegate-skills/lane-backups.json (or $XDG_CONFIG_HOME/delegate-skills/) and edit 'backups'. Leave 'active' and 'history' to the script.",
+  "version": "delegate-backups.v1",
+  "backups": {
+    "feature": { "implementer": "codex", "effort": "medium" },
+    "ui": { "implementer": "opencode", "model": "zai-coding-plan/glm-5.3", "variant": "low" },
+    "docs": { "implementer": "opencode", "model": "zai-coding-plan/glm-5.3", "variant": "low" },
+    "tests": { "implementer": "opencode", "model": "zai-coding-plan/glm-5.3", "variant": "low" },
+    "review": { "implementer": "claude", "model": "sonnet", "effort": "high" },
+    "qa": { "implementer": "opencode", "model": "zai-coding-plan/glm-5.3", "variant": "low" }
+  },
+  "active": {},
+  "history": []
+}

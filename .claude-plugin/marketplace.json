@@ -7,14 +7,14 @@
   },
   "metadata": {
     "description": "Somar's marketplace of AI plugins, skills, and agents for Claude Code. Professional, production-grade workflows for AI coding assistants.",
-    "version": "1.2.0"
+    "version": "1.3.0"
   },
   "plugins": [
     {
       "name": "code-pro",
       "source": "./claude/code-pro",
       "description": "Code like a professional senior full-stack developer. Full lifecycle: investigate, develop, develop-fr, bug-fix, code-review, test, regression-test, refactor, create-docs. develop-fr reserves Claude Opus for architecture and delegates implementation, testing, and per-step review to Codex and Gemini.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "Somar"
       },
@@ -32,6 +32,26 @@
         "delegation",
         "codex",
         "gemini"
+      ]
+    },
+    {
+      "name": "delegate-backup",
+      "source": "./claude/delegate-backup",
+      "description": "Swap an exhausted delegate lane onto a configured backup implementer, and restore it automatically when the provider's quota window resets. Keeps delegate-skills' config.json untouched by keeping all state in a sidecar file.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Somar"
+      },
+      "homepage": "https://github.com/SomarRezq/pro-marketplace/tree/main/claude/delegate-backup",
+      "license": "MIT",
+      "category": "development",
+      "keywords": [
+        "delegation",
+        "quota",
+        "fallback",
+        "rate-limit",
+        "scheduling",
+        "workflow"
       ]
     }
   ]

@@ -1,0 +1,8 @@
+{
+  "name": "delegate-backup",
+  "description": "Swap an exhausted delegate lane onto a configured backup implementer, and restore it automatically when the provider's quota window resets. Keeps delegate-skills' config.json untouched by storing all state in a sidecar file.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Somar"
+  }
+}
