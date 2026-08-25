@@ -18,3 +18,7 @@ node_modules/
 
 # Office temp/lock files
 ~$*
+
+# Session state from the remember plugin. Belt and braces — .remember/ already
+# carries its own .gitignore of "*", so this only matters if that file is lost.
+.remember/
