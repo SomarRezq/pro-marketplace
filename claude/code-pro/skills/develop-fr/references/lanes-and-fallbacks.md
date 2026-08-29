@@ -130,22 +130,32 @@ handle one that is **installed, authenticated, and out of quota** — that surfa
 failed dispatch, because `usable` only means "binary on PATH and relay installed".
 
 [`delegate-backup`](https://github.com/SomarRezq/pro-marketplace/tree/main/claude/delegate-backup)
-covers that case. It swaps an exhausted lane onto a configured backup implementer and
-schedules the lane's automatic return for when the provider's window resets, keeping all
-its state in a `lane-backups.json` sidecar so this pipeline's fleet config is untouched.
+covers that case. Each lane gets an ordered **chain** of implementers; the plugin walks
+the lane one position down the chain per exhaustion and schedules its return to the
+primary for when the provider's window resets. All state lives in a `lane-backups.json`
+sidecar, so this pipeline's fleet config stays untouched.
+
+**End every chain with a free, unmetered model** and the chain cannot be walked off the
+end — `opencode/nemotron-3-ultra-free` and `opencode/hy3-free` both write working code at
+zero cost and need no credential. That is what turns "everything is exhausted" from a
+stopped pipeline into a quality degradation.
 
 It is a **soft dependency**. Without it the pipeline runs exactly as before — an
 exhausted lane simply fails its dispatch and you retune by hand. With it installed,
-preflight prints an extra `Lane backups (active)` block naming any lane currently on a
-backup and when it returns. That block matters: a lane on a backup is being executed by
-a different provider than your config says, and that must never be invisible.
+preflight prints an extra `Lane backups (active)` block naming any lane on a fallback,
+its chain position as `[n/last]`, and when it returns. That block matters twice over: a
+lane on a fallback is being executed by a different provider than your config says, and
+the position tells you how much headroom is left.
 
 Run `delegate-backup resolve --all` at the start of a session to put back anything whose
 window has passed — it is the safety net for a scheduled restore that never fired.
 
-**Do not swap on every dispatch failure.** Only genuine quota exhaustion qualifies. In
-particular, Z.AI's `Insufficient balance or no resource package` (error 1113) is a
-*configuration* error — wrong endpoint or a model outside the plan — not exhaustion.
+**Do not swap on every dispatch failure.** Only genuine quota exhaustion qualifies. Two
+messages look like exhaustion and are not: Z.AI's `Insufficient balance or no resource
+package` (error 1113) is a *configuration* fault — wrong endpoint, or a model outside the
+plan — and `Rate limit reached for requests` is a per-minute throttle that should be
+retried. Z.AI's real exhaustion message is `Weekly/Monthly Limit Exhausted`, and it
+carries an absolute reset timestamp you can pass straight to `--until`.
 
 ## Checking your setup
 

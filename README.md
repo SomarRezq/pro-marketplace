@@ -11,6 +11,7 @@ arrive by re-running the marketplace update.
 ```bash
 /plugin marketplace add SomarRezq/pro-marketplace
 /plugin install code-pro@pro-marketplace
+/plugin install delegate-backup@pro-marketplace
 ```
 
 Browse everything interactively instead: `/plugin`
@@ -19,7 +20,12 @@ Browse everything interactively instead: `/plugin`
 
 | Plugin | What it does | Docs |
 |---|---|---|
-| [`code-pro`](claude/code-pro) | Code like a professional senior full-stack developer across the whole development lifecycle — investigate, develop, bug-fix, review, test, refactor, document. Its `develop-fr` pipeline reserves Claude Opus for architecture and delegates implementation, testing, and per-step review to Codex and Gemini. Ships 9 skills, 10 slash commands, and 7 specialized subagents. | [README](claude/code-pro/README.md) · [Spec (PDF)](docs/Code-pro-Plugin-Specification.pdf) · [Refactor plan](docs/REFACTOR-PLAN.md) |
+| [`code-pro`](claude/code-pro) | Code like a professional senior full-stack developer across the whole development lifecycle — investigate, develop, bug-fix, review, test, refactor, document. Its `develop-fr` pipeline reserves Claude Opus for architecture and delegates implementation, testing, and per-step review to external CLIs. Ships 9 skills, 10 slash commands, and 7 specialized subagents. | [README](claude/code-pro/README.md) · [Spec (DOCX)](docs/Code-pro-Plugin-Specification.docx) · [Refactor plan](docs/REFACTOR-PLAN.md) |
+| [`delegate-backup`](claude/delegate-backup) | Keeps a delegation pipeline running when implementers run out of quota. Each lane gets an ordered chain of implementers; the plugin walks one position down per exhaustion and schedules the lane's return for when the provider's window resets. End a chain with a free model and it can never run out of fallbacks. | [README](claude/delegate-backup/README.md) · [Spec (DOCX)](docs/Delegate-backup-Plugin-Specification.docx) |
+
+The two compose: `code-pro` treats `delegate-backup` as a **soft dependency**, so installing
+both means preflight reports any lane running on a fallback and how much chain headroom is
+left. Neither requires the other.
 
 ## Repository layout
 
@@ -31,12 +37,19 @@ pro-marketplace/
 ├── .claude-plugin/
 │   └── marketplace.json      ← Claude Code marketplace manifest (must be at repo root)
 ├── claude/                   ← plugins for Claude Code
-│   └── code-pro/
+│   ├── code-pro/
+│   │   ├── .claude-plugin/plugin.json
+│   │   ├── agents/           ← subagents: Markdown + YAML frontmatter
+│   │   ├── commands/         ← slash commands
+│   │   ├── scripts/          ← Node helpers the skills shell out to
+│   │   ├── skills/           ← skills (one folder per skill, each with SKILL.md)
+│   │   └── README.md
+│   └── delegate-backup/
 │       ├── .claude-plugin/plugin.json
-│       ├── agents/           ← subagents: Markdown + YAML frontmatter
-│       ├── commands/         ← slash commands
-│       ├── scripts/          ← Node helpers the skills shell out to
-│       ├── skills/           ← skills (one folder per skill, each with SKILL.md)
+│       ├── commands/
+│       ├── scripts/backup.mjs
+│       ├── skills/delegate-backup/SKILL.md
+│       ├── lane-backups.example.json
 │       └── README.md
 ├── docs/                     ← shared specification and reference material
 └── README.md

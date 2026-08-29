@@ -82,10 +82,13 @@ The degradation ladder handles an implementer that is *missing*. It does not han
 that is installed, authenticated, and **out of quota** — that just fails the dispatch.
 
 [`delegate-backup`](https://github.com/SomarRezq/pro-marketplace/tree/main/claude/delegate-backup)
-(`/plugin install delegate-backup@pro-marketplace`) swaps an exhausted lane onto a backup
-implementer and schedules its return for when the provider's window resets. It is a
-**soft dependency** — without it nothing changes; with it, preflight additionally reports
-any lane currently running on a backup and when it comes back.
+(`/plugin install delegate-backup@pro-marketplace`) gives each lane an ordered **chain** of
+implementers and walks it one position down per exhaustion, scheduling the lane's return
+for when the provider's window resets. End every chain with a free, unmetered model and
+the pipeline can never run out of fallbacks.
+
+It is a **soft dependency** — without it nothing changes; with it, preflight additionally
+reports any lane running on a fallback, its chain position, and when it comes back.
 
 ### What each implementer can do
 
@@ -121,12 +124,18 @@ config, not in this plugin, so retuning the entire pipeline is one file.
 
 | Lane | Used for | Suggested |
 |---|---|---|
-| `feature` | backend / logic steps | `{ "implementer": "agy", "model": "gemini-3.1-pro-high" }` |
-| `ui` | UI steps | `{ "implementer": "codex" }` |
-| `tests` | test-writing steps | `{ "implementer": "codex" }` |
+| `feature` | backend / logic steps | `{ "implementer": "opencode", "model": "zai-coding-plan/glm-5.3-flash", "variant": "low" }` |
+| `ui` | UI steps | `{ "implementer": "opencode", "model": "zai-coding-plan/glm-5.3-flash", "variant": "low" }` |
+| `tests` | test-writing steps | `{ "implementer": "codex", "effort": "medium" }` |
 | `review` | per-step review | `{ "implementer": "codex", "readOnly": true, "effort": "high" }` |
-| `qa` | end-to-end QA | `{ "implementer": "codex" }` |
-| `docs` | documentation steps | `{ "implementer": "agy", "model": "gemini-3.7-flash-high" }` |
+| `qa` | end-to-end QA | `{ "implementer": "codex", "effort": "medium" }` |
+| `docs` | documentation steps | `{ "implementer": "agy", "model": "gpt-oss-120b-medium" }` |
+
+**Spread lanes across independent quota buckets.** The suggestion above uses three: GLM,
+Codex, and Antigravity's GPT-OSS pool. Putting several lanes on one provider is what
+exhausts it — and note that *all* Z.AI coding-plan models (`glm-5.3`, `glm-5.3-flash`,
+`glm-5-turbo`, `glm-4.7`) share a single bucket, while Antigravity has two independent
+ones (Gemini, and Claude/GPT which includes `gpt-oss-120b-medium`).
 
 Edit through the `delegate-setup` skill, or by hand. If a lane is missing, the plugin uses
 an all-Codex default and tells you. Details and the degradation ladder:
