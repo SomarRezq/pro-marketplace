@@ -1,13 +1,37 @@
 {
-  "$comment": "Copy to ~/.config/delegate-skills/lane-backups.json (or $XDG_CONFIG_HOME/delegate-skills/) and edit 'backups'. Leave 'active' and 'history' to the script.",
-  "version": "delegate-backups.v1",
-  "backups": {
-    "feature": { "implementer": "codex", "effort": "medium" },
-    "ui": { "implementer": "opencode", "model": "zai-coding-plan/glm-5.3", "variant": "low" },
-    "docs": { "implementer": "opencode", "model": "zai-coding-plan/glm-5.3", "variant": "low" },
-    "tests": { "implementer": "opencode", "model": "zai-coding-plan/glm-5.3", "variant": "low" },
-    "review": { "implementer": "claude", "model": "sonnet", "effort": "high" },
-    "qa": { "implementer": "opencode", "model": "zai-coding-plan/glm-5.3", "variant": "low" }
+  "$comment": "Copy to ~/.config/delegate-skills/lane-backups.json (or $XDG_CONFIG_HOME/delegate-skills/) and edit 'chains'. Position 0 must mirror the lane's primary in config.json. END EVERY CHAIN WITH A FREE, UNMETERED MODEL so it can never be walked off the end. Leave 'active' and 'history' to the script.",
+  "version": "delegate-backups.v2",
+  "chains": {
+    "feature": [
+      { "implementer": "opencode", "model": "zai-coding-plan/glm-5.3-flash", "variant": "low" },
+      { "implementer": "codex", "effort": "medium" },
+      { "implementer": "opencode", "model": "opencode/nemotron-3-ultra-free" }
+    ],
+    "ui": [
+      { "implementer": "opencode", "model": "zai-coding-plan/glm-5.3-flash", "variant": "low" },
+      { "implementer": "codex", "effort": "medium" },
+      { "implementer": "opencode", "model": "opencode/hy3-free" }
+    ],
+    "tests": [
+      { "implementer": "codex", "effort": "medium" },
+      { "implementer": "opencode", "model": "zai-coding-plan/glm-5.3-flash", "variant": "low" },
+      { "implementer": "opencode", "model": "opencode/hy3-free" }
+    ],
+    "review": [
+      { "implementer": "codex", "readOnly": true, "effort": "high" },
+      { "implementer": "claude", "model": "sonnet", "effort": "high" },
+      { "implementer": "opencode", "model": "opencode/nemotron-3-ultra-free", "readOnly": true }
+    ],
+    "qa": [
+      { "implementer": "codex", "effort": "medium" },
+      { "implementer": "opencode", "model": "zai-coding-plan/glm-5.3-flash", "variant": "low" },
+      { "implementer": "opencode", "model": "opencode/hy3-free" }
+    ],
+    "docs": [
+      { "implementer": "agy", "model": "gpt-oss-120b-medium" },
+      { "implementer": "opencode", "model": "zai-coding-plan/glm-5.3-flash", "variant": "low" },
+      { "implementer": "opencode", "model": "opencode/nemotron-3-ultra-free" }
+    ]
   },
   "active": {},
   "history": []

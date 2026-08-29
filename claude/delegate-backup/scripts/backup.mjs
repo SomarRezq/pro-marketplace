@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// delegate-backup — swap an exhausted lane to its configured backup, and put it back
-// when the provider's quota window resets.
+// delegate-backup — walk a lane down a priority chain of implementers as each one runs
+// out of quota, and put it back when the provider's window resets.
 //
 // Node built-ins only — this ships inside a plugin and must never need an install.
 //
@@ -9,13 +9,17 @@
 //  * `config.json` is delegate-skills' document and stays a valid `delegate-fleet.v1`
 //    file at all times. Every piece of state this feature needs lives in the sidecar
 //    `lane-backups.json`, so a delegate-skills upgrade can never collide with us.
-//  * One backup per lane. When the backup is exhausted too there is nowhere left to
-//    go, so `apply` refuses and tells the orchestrator to ask the user. It never
-//    cascades silently.
+//  * A lane has a CHAIN, not a single backup. `apply` advances one position each time
+//    it is called. Position 0 mirrors the lane's primary in config.json.
+//  * End every chain with a free, unmetered model. Then the chain cannot be walked off
+//    the end, and "no fallback left" stops being a state the user can reach.
 //  * Restores are clobber-safe: we only put a lane back if it still holds exactly what
 //    we wrote. A hand-edit since the swap wins over us.
 //  * Expiry is recorded as a timestamp, so a lost or never-fired scheduled task cannot
-//    strand a lane on its backup — `resolve --all` catches it on the next preflight.
+//    strand a lane on a fallback — `resolve --all` catches it on the next preflight.
+//  * Restore always returns to position 0 and probes. If position 0 is still exhausted
+//    the next dispatch fails and re-advances, costing one call. That is deliberate:
+//    per-position cooldown tracking is where this design gets complicated and wrong.
 //
 // This script cannot create or delete scheduled tasks; those are MCP tools only the
 // orchestrator can call. `apply` therefore prints the exact task spec to create, and
@@ -25,16 +29,17 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { homedir } from "node:os";
 import path from "node:path";
 
-const BACKUPS_VERSION = "delegate-backups.v1";
+const BACKUPS_VERSION = "delegate-backups.v2";
+const LEGACY_VERSION = "delegate-backups.v1";
 const FLEET_VERSION = "delegate-fleet.v1";
 
 /** Exit codes callers branch on. Keep these stable — the skill documents them. */
 const EXIT = {
   ok: 0,
   usage: 1,
-  noBackup: 2, // lane has no backup configured
+  noChain: 2, // lane has no chain configured
   nothingToDo: 3, // resolve found nothing due
-  exhausted: 4, // lane already on its backup — no further fallback
+  exhausted: 4, // chain walked to its end — should be unreachable with a free floor
 };
 
 // ---------------------------------------------------------------------------
@@ -61,6 +66,11 @@ function taskIdFor(lane) {
 // ---------------------------------------------------------------------------
 // IO
 // ---------------------------------------------------------------------------
+
+function fail(msg, code = EXIT.usage) {
+  process.stderr.write(`delegate-backup: ${msg}\n`);
+  process.exit(code);
+}
 
 function readJson(file, fallback) {
   if (!existsSync(file)) return fallback;
@@ -89,15 +99,43 @@ function loadFleet() {
   return fleet;
 }
 
-function loadBackups() {
+/**
+ * Load the sidecar, upgrading a v1 document in memory.
+ *
+ * v1 stored one backup per lane and no notion of the primary. A v1 lane therefore
+ * becomes the two-element chain [<the lane as it stands in config.json>, <the backup>],
+ * which preserves exactly the behaviour the user already had.
+ */
+function loadBackups(fleet) {
   const doc = readJson(BACKUPS_PATH, {
     version: BACKUPS_VERSION,
-    backups: {},
+    chains: {},
     active: {},
     history: [],
   });
+
+  if (doc.version === LEGACY_VERSION) {
+    const chains = {};
+    for (const [lane, backup] of Object.entries(doc.backups ?? {})) {
+      const primary = fleet.lanes[lane];
+      chains[lane] = primary ? [laneDials(primary), backup] : [backup];
+    }
+    // A v1 active entry has no position; it was always the single backup, i.e. index 1.
+    const active = {};
+    for (const [lane, a] of Object.entries(doc.active ?? {})) {
+      active[lane] = { ...a, position: a.position ?? 1 };
+    }
+    return {
+      version: BACKUPS_VERSION,
+      chains,
+      active,
+      history: doc.history ?? [],
+      migratedFrom: LEGACY_VERSION,
+    };
+  }
+
   doc.version ??= BACKUPS_VERSION;
-  doc.backups ??= {};
+  doc.chains ??= {};
   doc.active ??= {};
   doc.history ??= [];
   if (doc.version !== BACKUPS_VERSION) {
@@ -110,20 +148,16 @@ function loadBackups() {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function fail(msg, code = EXIT.usage) {
-  process.stderr.write(`delegate-backup: ${msg}\n`);
-  process.exit(code);
-}
-
 /**
  * Parse `--until`. Accepts a provider-style duration ("71h37m", "5h", "90m", "45s")
  * or an absolute ISO 8601 timestamp. Providers report the reset window in their
- * exhaustion message, so the duration form is what callers normally have.
+ * exhaustion message, so both forms occur in practice — Codex and Antigravity give a
+ * duration, Z.AI gives an absolute timestamp.
  */
 function parseUntil(value) {
-  if (!value) fail("--until is required (e.g. 71h37m, 5h, or an ISO timestamp)");
+  if (!value) fail("--until is required (e.g. 71h37m, or 2026-09-02T05:29:47+02:00)");
   const duration = /^(?:(\d+)\s*d)?\s*(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?\s*(?:(\d+)\s*s)?$/i.exec(
-    value.trim(),
+    String(value).trim(),
   );
   if (duration && duration.slice(1).some(Boolean)) {
     const [, d, h, m, s] = duration;
@@ -144,7 +178,7 @@ function laneDials(lane) {
   return rest;
 }
 
-/** Stable stringify for the clobber-safety comparison. */
+/** Stable comparison for the clobber-safety check and for locating a chain position. */
 function sameLane(a, b) {
   const norm = (o) =>
     JSON.stringify(
@@ -163,8 +197,8 @@ function humanRemaining(iso) {
 
 /**
  * ISO 8601 with the machine's local UTC offset. `create_scheduled_task` wants an
- * offset-qualified timestamp, and a bare `toISOString()` (always Z) is easy to
- * misread when the user reasons about it in local time.
+ * offset-qualified timestamp, and a bare `toISOString()` (always Z) is easy to misread
+ * when the user reasons about it in local time.
  */
 function isoLocal(date) {
   const off = -date.getTimezoneOffset();
@@ -175,6 +209,14 @@ function isoLocal(date) {
     `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}` +
     `${sign}${pad(off / 60)}:${pad(off % 60)}`
   );
+}
+
+function label(entry) {
+  const dials = Object.entries(laneDials(entry))
+    .filter(([k]) => k !== "implementer")
+    .map(([k, v]) => `${k}=${v}`)
+    .join(" ");
+  return `${entry.implementer}${dials ? ` (${dials})` : ""}`;
 }
 
 function parseArgs(argv) {
@@ -199,7 +241,7 @@ function parseArgs(argv) {
 // ---------------------------------------------------------------------------
 
 /**
- * Swap one lane onto its configured backup and record how to undo it.
+ * Advance one lane to the next position in its chain and record how to undo it.
  * Prints the scheduled-task spec for the orchestrator to create.
  */
 function cmdApply(args) {
@@ -207,48 +249,61 @@ function cmdApply(args) {
   if (!lane) fail("apply needs --lane <name>");
 
   const fleet = loadFleet();
-  const doc = loadBackups();
+  const doc = loadBackups(fleet);
 
   const current = fleet.lanes[lane];
   if (!current) fail(`lane "${lane}" is not in ${FLEET_PATH}`);
 
-  // Depth 1: if this lane is already on its backup there is no further fallback.
-  // Refuse loudly rather than cascade — the user decides what happens next.
-  const active = doc.active[lane];
-  if (active) {
+  const chain = doc.chains[lane];
+  if (!Array.isArray(chain) || chain.length < 2) {
     process.stderr.write(
-      `lane "${lane}": primary (${active.original.implementer}) and backup ` +
-        `(${active.wrote.implementer}) are both exhausted.\n` +
-        `No further fallback is configured. Scheduled restore: ${active.expiresAt} ` +
-        `(${humanRemaining(active.expiresAt)}).\n` +
-        `This needs a decision from the user — do not swap again automatically.\n`,
+      `lane "${lane}" has no fallback chain in ${BACKUPS_PATH}.\n` +
+        `Add one under "chains" as an array of at least two entries, ending in a free model.\n`,
+    );
+    process.exit(EXIT.noChain);
+  }
+
+  const active = doc.active[lane];
+  // Where are we now? Trust the recorded position; otherwise locate the live lane in
+  // the chain. An unrecognised lane means someone edited config.json by hand, and
+  // position 0 is the safe reading — advance to 1 rather than skip ahead.
+  const from = active ? active.position : Math.max(0, chain.findIndex((e) => sameLane(e, current)));
+  const next = from + 1;
+
+  if (next >= chain.length) {
+    process.stderr.write(
+      `lane "${lane}": the fallback chain is exhausted (position ${from} of ${chain.length - 1}).\n` +
+        `Chain: ${chain.map((e, i) => `${i}:${e.implementer}`).join(" -> ")}\n` +
+        `Every entry is spent. This needs a decision from the user.\n` +
+        `Chains should end in a free, unmetered model so this state is unreachable.\n`,
     );
     process.exit(EXIT.exhausted);
   }
 
-  const backup = doc.backups[lane];
-  if (!backup) {
-    process.stderr.write(
-      `lane "${lane}" has no backup configured in ${BACKUPS_PATH}.\n` +
-        `Add one under "backups", then re-run.\n`,
-    );
-    process.exit(EXIT.noBackup);
-  }
-  if (typeof backup.implementer !== "string" || !backup.implementer) {
-    fail(`backup for lane "${lane}" has no implementer`);
-  }
-  if (sameLane(backup, current)) {
-    fail(`backup for lane "${lane}" is identical to its current config — nothing to swap to`);
+  const target = chain[next];
+  if (typeof target?.implementer !== "string" || !target.implementer) {
+    fail(`chain entry ${next} for lane "${lane}" has no implementer`);
   }
 
   const expiresAt = parseUntil(args.until);
-  const original = laneDials(current);
-  const wrote = laneDials(backup);
+  // The original is whatever the lane held before we ever touched it — preserved across
+  // every advance, so a restore always returns to the user's own configuration.
+  const original = active ? active.original : laneDials(current);
+  const wrote = laneDials(target);
 
   if (args["dry-run"]) {
     process.stdout.write(
       `${JSON.stringify(
-        { dryRun: true, lane, from: original, to: wrote, expiresAt: isoLocal(expiresAt) },
+        {
+          dryRun: true,
+          lane,
+          fromPosition: from,
+          toPosition: next,
+          chainLength: chain.length,
+          from: laneDials(current),
+          to: wrote,
+          expiresAt: isoLocal(expiresAt),
+        },
         null,
         2,
       )}\n`,
@@ -261,24 +316,26 @@ function cmdApply(args) {
 
   doc.active[lane] = {
     original,
+    position: next,
     wrote,
     appliedAt: isoLocal(new Date()),
     expiresAt: isoLocal(expiresAt),
     reason: typeof args.reason === "string" ? args.reason : "",
     taskId: taskIdFor(lane),
   };
+  delete doc.migratedFrom;
   writeJson(BACKUPS_PATH, doc);
 
-  // The orchestrator creates the task; we only describe it. Keeping the prompt to a
-  // single command is deliberate — a scheduled run starts with no context, so there
-  // must be nothing for it to interpret.
+  const remaining = chain.length - 1 - next;
   const spec = {
     lane,
-    swapped: { from: original, to: wrote },
+    movedTo: { position: next, of: chain.length - 1, implementer: target.implementer },
+    fallbacksRemaining: remaining,
+    swapped: { from: laneDials(current), to: wrote },
     expiresAt: isoLocal(expiresAt),
     scheduledTask: {
       taskId: taskIdFor(lane),
-      description: `Restore delegate lane "${lane}" from its backup once the quota window resets`,
+      description: `Restore delegate lane "${lane}" to its primary once the quota window resets`,
       fireAt: isoLocal(expiresAt),
       notifyOnCompletion: true,
       prompt:
@@ -288,17 +345,22 @@ function cmdApply(args) {
         `If deleting is not possible, stop — the task is one-shot and will not fire again.`,
     },
   };
+  if (remaining === 0) {
+    spec.warning =
+      "This is the last entry in the chain. If it also fails there is nowhere left to go — " +
+      "consider ending this chain with a free, unmetered model.";
+  }
   process.stdout.write(`${JSON.stringify(spec, null, 2)}\n`);
 }
 
 /**
- * Put lanes back. With --lane, restores that lane regardless of clock (the scheduled
- * task fired). With --all, restores every lane whose window has passed — the safety
- * net that stops a lost task from stranding a lane forever.
+ * Return lanes to position 0. With --lane, restores that lane regardless of clock (the
+ * scheduled task fired). With --all, restores every lane whose window has passed — the
+ * safety net that stops a lost task from stranding a lane indefinitely.
  */
 function cmdResolve(args) {
-  const doc = loadBackups();
   const fleet = loadFleet();
+  const doc = loadBackups(fleet);
   const now = Date.now();
 
   let lanes;
@@ -315,7 +377,7 @@ function cmdResolve(args) {
   for (const lane of lanes) {
     const active = doc.active[lane];
     if (!active) {
-      skipped.push({ lane, why: "no active backup" });
+      skipped.push({ lane, why: "no active fallback" });
       continue;
     }
     if (!args.force && !args.lane && new Date(active.expiresAt).getTime() > now) {
@@ -336,11 +398,13 @@ function cmdResolve(args) {
     fleet.lanes[lane] = { ...active.original };
     delete doc.active[lane];
     doc.history.push({ ...active, lane, restoredAt: isoLocal(new Date()), outcome: "restored" });
-    restored.push({ lane, to: active.original, taskId: active.taskId });
+    restored.push({ lane, to: active.original, fromPosition: active.position, taskId: active.taskId });
   }
 
+  const abandoned = skipped.some((s) => s.why.startsWith("lane changed"));
   if (restored.length) writeJson(FLEET_PATH, fleet);
-  if (restored.length || skipped.some((s) => s.why.startsWith("lane changed"))) {
+  if (restored.length || abandoned || doc.migratedFrom) {
+    delete doc.migratedFrom;
     writeJson(BACKUPS_PATH, doc);
   }
 
@@ -369,13 +433,15 @@ function cmdResolve(args) {
   if (!restored.length) process.exit(EXIT.nothingToDo);
 }
 
-/** What is swapped right now, what it costs, and when it comes back. */
+/** What is swapped right now, how far down each chain, and when it comes back. */
 function cmdStatus(args) {
-  const doc = loadBackups();
   const fleet = loadFleet();
+  const doc = loadBackups(fleet);
 
   const active = Object.entries(doc.active).map(([lane, a]) => ({
     lane,
+    position: a.position,
+    of: (doc.chains[lane]?.length ?? 1) - 1,
     on: a.wrote.implementer,
     restoreTo: a.original.implementer,
     expiresAt: a.expiresAt,
@@ -384,64 +450,79 @@ function cmdStatus(args) {
     reason: a.reason,
   }));
 
-  const configured = Object.entries(doc.backups).map(([lane, b]) => ({
-    lane,
-    backup: b.implementer,
-    inFleet: Boolean(fleet.lanes[lane]),
-  }));
-
-  const lanesWithoutBackup = Object.keys(fleet.lanes).filter((l) => !doc.backups[l]);
+  const lanesWithoutChain = Object.keys(fleet.lanes).filter(
+    (l) => !Array.isArray(doc.chains[l]) || doc.chains[l].length < 2,
+  );
 
   if (args.json) {
     process.stdout.write(
-      `${JSON.stringify({ active, configured, lanesWithoutBackup, path: BACKUPS_PATH }, null, 2)}\n`,
+      `${JSON.stringify(
+        { version: doc.version, active, chains: doc.chains, lanesWithoutChain, path: BACKUPS_PATH },
+        null,
+        2,
+      )}\n`,
     );
     return;
   }
 
   const L = [];
-  L.push("delegate-backup status");
+  L.push(`delegate-backup status   (${doc.version})`);
+  if (doc.migratedFrom) {
+    L.push(`  NOTE  migrated in memory from ${doc.migratedFrom}; the next write persists v2`);
+  }
   L.push("");
-  if (!active.length) L.push("  No lane is on a backup right now.");
+  if (!active.length) L.push("  Every lane is on its primary.");
   else {
-    L.push("  Active backups");
+    L.push("  Active fallbacks");
     for (const a of active) {
       L.push(
-        `    ${a.lane.padEnd(9)} on ${a.on.padEnd(10)} → restores to ${a.restoreTo.padEnd(10)} ` +
+        `    ${a.lane.padEnd(9)} position ${a.position}/${a.of} on ${a.on.padEnd(10)}` +
+          ` → restores to ${a.restoreTo.padEnd(10)} ` +
           `${a.overdue ? "OVERDUE — run: resolve --all" : `in ${a.remaining}`}`,
       );
       if (a.reason) L.push(`      reason: ${a.reason}`);
     }
   }
   L.push("");
-  L.push("  Configured backups");
-  if (!configured.length) L.push(`    (none — add them to ${BACKUPS_PATH})`);
-  for (const c of configured) {
-    L.push(`    ${c.lane.padEnd(9)} → ${c.backup}${c.inFleet ? "" : "   [lane not in fleet]"}`);
+  L.push("  Chains");
+  const laneNames = Object.keys(doc.chains);
+  if (!laneNames.length) L.push(`    (none — add them to ${BACKUPS_PATH})`);
+  for (const lane of laneNames) {
+    const chain = doc.chains[lane];
+    const pos = doc.active[lane]?.position ?? 0;
+    const rendered = chain
+      .map((e, i) => (i === pos ? `[${i}:${label(e)}]` : `${i}:${label(e)}`))
+      .join("  ->  ");
+    L.push(`    ${lane.padEnd(9)} ${rendered}`);
   }
-  if (lanesWithoutBackup.length) {
+  if (lanesWithoutChain.length) {
     L.push("");
-    L.push(`  Lanes with no backup: ${lanesWithoutBackup.join(", ")}`);
+    L.push(`  Lanes with no usable chain: ${lanesWithoutChain.join(", ")}`);
   }
+  L.push("");
+  L.push("  [n:...] marks the position currently live in config.json.");
   process.stdout.write(`${L.join("\n")}\n`);
 }
 
 // ---------------------------------------------------------------------------
 
-const USAGE = `delegate-backup — swap an exhausted lane to its backup, and put it back later
+const USAGE = `delegate-backup — walk a lane down its fallback chain, and put it back later
 
   apply   --lane <name> --until <71h37m|ISO> [--reason "..."] [--dry-run]
-          Swap the lane onto its configured backup. Prints the scheduled-task spec
-          to create. Exits ${EXIT.exhausted} if the lane is already on its backup,
-          ${EXIT.noBackup} if no backup is configured for it.
+          Advance the lane one position down its chain. Prints the scheduled-task spec
+          to create. Exits ${EXIT.exhausted} only when the chain has no entries left,
+          ${EXIT.noChain} when the lane has no chain configured.
 
   resolve [--lane <name>] [--all] [--force]
-          Put lanes back. --lane restores that lane now (the task fired).
+          Return lanes to position 0. --lane restores that lane now (the task fired).
           --all restores every lane whose window has passed (the safety net).
           Exits ${EXIT.nothingToDo} when nothing was due.
 
   status  [--json]
-          Show active and configured backups.
+          Show each chain, the live position, and any active fallback.
+
+Chains live under "chains" in the sidecar, as an ordered array per lane. Position 0 is
+the lane's primary. End every chain with a free, unmetered model so it cannot run out.
 
 Files
   fleet   ${FLEET_PATH}

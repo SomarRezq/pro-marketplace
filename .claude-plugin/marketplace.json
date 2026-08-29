@@ -7,7 +7,7 @@
   },
   "metadata": {
     "description": "Somar's marketplace of AI plugins, skills, and agents for Claude Code. Professional, production-grade workflows for AI coding assistants.",
-    "version": "1.3.0"
+    "version": "1.4.0"
   },
   "plugins": [
     {
@@ -37,8 +37,8 @@
     {
       "name": "delegate-backup",
       "source": "./claude/delegate-backup",
-      "description": "Swap an exhausted delegate lane onto a configured backup implementer, and restore it automatically when the provider's quota window resets. Keeps delegate-skills' config.json untouched by keeping all state in a sidecar file.",
-      "version": "1.0.0",
+      "description": "Walk a delegate lane down a priority chain of implementers as each runs out of quota, and restore it automatically when the provider window resets. Chains end in a free model so the pipeline cannot run out of fallbacks. Keeps delegate-skills config.json untouched via a sidecar.",
+      "version": "2.0.0",
       "author": {
         "name": "Somar"
       },
@@ -51,7 +51,8 @@
         "fallback",
         "rate-limit",
         "scheduling",
-        "workflow"
+        "workflow",
+        "free-models"
       ]
     }
   ]

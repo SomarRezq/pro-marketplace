@@ -152,8 +152,14 @@ if (existsSync(backupsPath)) {
         const due = new Date(a.expiresAt).getTime();
         const overdue = due <= Date.now();
         const mins = Math.max(0, Math.round((due - Date.now()) / 60000));
+        // v2 chains carry a position; v1 had a single backup and no position.
+        const chain = doc.chains?.[lane];
+        const pos =
+          a.position != null && Array.isArray(chain)
+            ? ` [${a.position}/${chain.length - 1}]`
+            : "";
         L.push(
-          `  ${overdue ? "DUE " : "OK  "} ${lane.padEnd(8)} on ${String(a.wrote?.implementer).padEnd(9)}` +
+          `  ${overdue ? "DUE " : "OK  "} ${lane.padEnd(8)} on ${String(a.wrote?.implementer).padEnd(9)}${pos}` +
             ` → back to ${String(a.original?.implementer).padEnd(9)}` +
             (overdue
               ? "  OVERDUE — run: delegate-backup resolve --all"
