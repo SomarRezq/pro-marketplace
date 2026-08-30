@@ -18,10 +18,11 @@ you ──▶ ORCHESTRATOR (you — routing only, never reads or writes code)
    ├─2─ APPROVAL ........ the user
    ├─2b ISSUES .......... gh, optional (--issues): milestone/wave, issue/step
    ├─3─ PER STEP (parallel where deps allow):
-   │      3a IMPLEMENT .. lane → Gemini or Codex
-   │      3b REVIEW ..... Codex, read-only
+   │      3a IMPLEMENT .. lane → the wave's implementer  (wave → in-progress)
+   │      3b REVIEW ..... read-only lane
    │      3c REWORK ..... same session, ≤2 rounds, then escalate
    │      3d GATES ...... you re-run them yourself
+   │      3e PUSH ....... current branch; closes the pushed waves' issues
    ├─4─ QA .............. lane → Codex
    ├─5─ FINAL REVIEW .... Claude Opus / high     [solution-architect]
    └─6─ REPORT
@@ -134,6 +135,16 @@ node "$S/dispatch.mjs" --brief "$RUN/steps/step-NN.brief.md" --lane <lane> \
      --cd . --result "$RUN/steps/step-NN.result.md" --timeout 2h
 ```
 
+If the run was mirrored (phase 2b), mark the whole wave in progress as you dispatch its
+**first** step — one call for every issue in the wave:
+
+```bash
+node "$S/issues.mjs" start --run "$RUN" --wave N
+```
+
+Set it once and leave it. Review rounds, rework and re-dispatches do **not** touch it —
+the next and only other transition is closing at push.
+
 Exit 3 means no external implementer for that lane — spawn `code-pro:developer` with the
 same brief and result paths instead.
 
@@ -181,12 +192,8 @@ Never take "gates passed" from an executor on faith. Only when the gates actuall
 node "$S/state.mjs" step --run "$RUN" --id NN --status done
 ```
 
-If the run was mirrored (phase 2b), close the step's issue too — gates passing is the
-only thing that earns a close:
-
-```bash
-node "$S/issues.mjs" close --run "$RUN" --id NN
-```
+Gates passing does **not** close the issue. A step that works but is not yet pushed is
+still open work as far as the repository is concerned — closing happens at push, below.
 
 When you commit this step, put `Refs #<issue>` in the trailer so the commit and the
 ticket are linked. The relays never commit — that is yours.
@@ -198,6 +205,20 @@ node "$S/state.mjs" checkpoint --run "$RUN"
 ```
 
 Tell the user it is safe to `/compact`, then keep going — don't wait for an answer.
+
+**3e — push, and close what you pushed.** Only when the user says the work can go. Some
+waves are complete but not safely pushable alone; those wait and go out together with a
+later wave. You work on **whatever branch is already checked out** — never create a
+branch, open a PR, or merge anything.
+
+```bash
+node "$S/issues.mjs" push --run "$RUN" --waves 1,2 --commit "$(git rev-parse --short HEAD)"
+```
+
+`--through N` closes every wave up to and including N, for the common case of catching
+up several at once. Closing is explicit rather than relying on a `Closes #` keyword,
+because GitHub only auto-closes from commits on the default branch and this pipeline
+does not assume which branch you are on.
 
 ## Phase 4 — QA
 
