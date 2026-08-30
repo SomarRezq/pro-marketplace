@@ -374,6 +374,15 @@ function cmdPush(args) {
     return;
   }
 
+  // Drop the in-progress label before closing — a closed issue still tagged
+  // "in-progress" reads wrong on a board. One batched call for the whole group.
+  const labelled = targets.filter(([, v]) => v.state === "in-progress").map(([, v]) => String(v.issue));
+  if (labelled.length) {
+    gh(["issue", "edit", ...labelled, "--repo", repo, "--remove-label", LABEL_IN_PROGRESS], {
+      allowFail: true, // cosmetic; never block a close on it
+    });
+  }
+
   const closed = [];
   for (const [id, v] of targets) {
     gh(["issue", "close", String(v.issue), "--repo", repo, "--comment", comment]);
@@ -381,7 +390,9 @@ function cmdPush(args) {
     saveMap(dir, map); // per issue: a failure halfway leaves an accurate map
     closed.push({ id, issue: v.issue, wave: v.wave });
   }
-  process.stdout.write(`${JSON.stringify({ waves, calls: closed.length, closed }, null, 2)}\n`);
+  process.stdout.write(
+    `${JSON.stringify({ waves, calls: closed.length + (labelled.length ? 1 : 0), closed }, null, 2)}\n`,
+  );
 }
 
 /** Local view. Costs nothing — reads the mapping, never GitHub. */
