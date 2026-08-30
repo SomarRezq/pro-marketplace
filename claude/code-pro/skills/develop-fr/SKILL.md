@@ -16,6 +16,7 @@ you ──▶ ORCHESTRATOR (you — routing only, never reads or writes code)
    ├─0─ PREFLIGHT ....... script, no model
    ├─1─ PLAN ............ Claude Opus / high     [solution-architect]
    ├─2─ APPROVAL ........ the user
+   ├─2b ISSUES .......... gh, optional (--issues): milestone/wave, issue/step
    ├─3─ PER STEP (parallel where deps allow):
    │      3a IMPLEMENT .. lane → Gemini or Codex
    │      3b REVIEW ..... Codex, read-only
@@ -92,6 +93,27 @@ node "$S/state.mjs" checkpoint --run "$RUN" --note "plan approved"
 node "$S/state.mjs" phase --run "$RUN" --to implementing
 ```
 
+### Phase 2b — Mirror the plan to GitHub (optional)
+
+Only when the user asked for it (`/develop-fr --issues`) — never by default, since a
+twelve-step plan is twelve issues on someone's board.
+
+```bash
+node "$S/issues.mjs" sync --run "$RUN"
+```
+
+Creates a **milestone per wave** and an **issue per step**, and records the issue number
+on each step. A wave is derived from the dependency graph — it is the same batch
+`state.mjs next` already dispatches in parallel, just named. Show the user the milestone
+list and issue numbers.
+
+The run directory stays the source of truth for execution. These issues mirror it, so if
+GitHub is unreachable, say so and carry on — losing the mirror must never stop the run.
+`sync` is idempotent: re-run it to finish a partial mirror.
+
+Exit 2 means `gh` is missing or unauthenticated. Report that and continue without the
+mirror rather than failing the run.
+
 ## Phase 3 — Implement, review, rework
 
 Loop until `state.mjs next` reports all steps done.
@@ -158,6 +180,16 @@ Never take "gates passed" from an executor on faith. Only when the gates actuall
 ```bash
 node "$S/state.mjs" step --run "$RUN" --id NN --status done
 ```
+
+If the run was mirrored (phase 2b), close the step's issue too — gates passing is the
+only thing that earns a close:
+
+```bash
+node "$S/issues.mjs" close --run "$RUN" --id NN
+```
+
+When you commit this step, put `Refs #<issue>` in the trailer so the commit and the
+ticket are linked. The relays never commit — that is yours.
 
 **Checkpoint after every 3 completed steps:**
 
