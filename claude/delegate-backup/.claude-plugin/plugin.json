@@ -1,7 +1,7 @@
 {
   "name": "delegate-backup",
   "description": "Walk a delegate lane down a priority chain of implementers as each runs out of quota, and restore it automatically when the provider window resets. Chains end in a free model so the pipeline cannot run out of fallbacks. Keeps delegate-skills config.json untouched via a sidecar.",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "author": {
     "name": "Somar"
   }

@@ -89,6 +89,26 @@ node scripts/backup.mjs resolve --all
 `--until` accepts a duration (`71h37m`, `5h`, `3d`) or an ISO timestamp. Codex and
 Antigravity report a duration; Z.AI reports an absolute timestamp.
 
+### `--until` is about the position you're leaving
+
+This is the one non-obvious rule. `--until` is the window of the implementer that *just
+failed* — not when the lane comes back. Those are the same thing on the first advance and
+different on every one after it, because a restore always returns to **position 0**.
+
+Advance off a primary that's dead for three days, then advance again off a Codex that's
+dead for five hours, and a naive reading would schedule the restore in five hours —
+putting the lane back on the still-dead primary, where it immediately fails again. So the
+restore is always scheduled from position 0's window. Each position's recovery time is
+tracked separately in `deadUntil`, and `status` shows them:
+
+```
+feature   position 2/2 on opencode   → restores to opencode   in 52h 10m
+  recovers  0:52h 10m   1:35m   (restore waits on position 0)
+```
+
+Use `--primary-until <window>` to correct position 0's window when you learn it after the
+fact. It is the only flag that moves the restore time.
+
 ### Exit codes
 
 | Code | Meaning |

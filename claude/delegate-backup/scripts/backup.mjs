@@ -17,9 +17,12 @@
 //    we wrote. A hand-edit since the swap wins over us.
 //  * Expiry is recorded as a timestamp, so a lost or never-fired scheduled task cannot
 //    strand a lane on a fallback — `resolve --all` catches it on the next preflight.
-//  * Restore always returns to position 0 and probes. If position 0 is still exhausted
-//    the next dispatch fails and re-advances, costing one call. That is deliberate:
-//    per-position cooldown tracking is where this design gets complicated and wrong.
+//  * Restore always returns to position 0. It must therefore wait for POSITION 0 to
+//    recover — never for the window of some intermediate position we happen to be
+//    leaving. `--until` describes the position that just failed, so it is recorded
+//    against that position in `deadUntil`, and the restore is scheduled from
+//    `deadUntil["0"]`. Scheduling on a mid-chain window puts the lane back on a
+//    still-dead primary, which is the one bug this file exists to avoid.
 //
 // This script cannot create or delete scheduled tasks; those are MCP tools only the
 // orchestrator can call. `apply` therefore prints the exact task spec to create, and
@@ -285,11 +288,41 @@ function cmdApply(args) {
     fail(`chain entry ${next} for lane "${lane}" has no implementer`);
   }
 
-  const expiresAt = parseUntil(args.until);
+  const until = parseUntil(args.until);
   // The original is whatever the lane held before we ever touched it — preserved across
   // every advance, so a restore always returns to the user's own configuration.
   const original = active ? active.original : laneDials(current);
   const wrote = laneDials(target);
+
+  // `--until` describes the window of the position we are LEAVING — the one whose
+  // provider just reported exhaustion. Record it against `from`, not against the
+  // position we are moving to.
+  const deadUntil = { ...(active?.deadUntil ?? {}) };
+  // An entry written before deadUntil existed only knew its own expiresAt, which at
+  // that point was position 0's window. Seed from it so upgrades keep working.
+  if (active && !active.deadUntil && active.expiresAt) deadUntil["0"] ??= active.expiresAt;
+  deadUntil[String(from)] = isoLocal(until);
+
+  // `--primary-until` corrects position 0's window when you learn it after the fact —
+  // e.g. the primary's real reset turns out to be days away, not hours.
+  if (typeof args["primary-until"] === "string") {
+    deadUntil["0"] = isoLocal(parseUntil(args["primary-until"]));
+  }
+
+  // THE RULE: the restore returns this lane to position 0, so it waits for position 0.
+  const restoreAt = new Date(deadUntil["0"] ?? isoLocal(until));
+
+  // Advancing mid-chain with a window shorter than the primary's is normal and correct;
+  // say so, because the natural expectation is that --until sets the restore time.
+  const notes = [];
+  if (from > 0 && until.getTime() < restoreAt.getTime()) {
+    notes.push(
+      `--until (${isoLocal(until)}) describes position ${from}, which is not where this lane ` +
+        `restores to. The restore stays scheduled for position 0's window ` +
+        `(${deadUntil["0"]}) so the lane is not put back on a still-exhausted primary. ` +
+        `Use --primary-until to correct position 0's window.`,
+    );
+  }
 
   if (args["dry-run"]) {
     process.stdout.write(
@@ -302,7 +335,9 @@ function cmdApply(args) {
           chainLength: chain.length,
           from: laneDials(current),
           to: wrote,
-          expiresAt: isoLocal(expiresAt),
+          deadUntil,
+          restoreAt: isoLocal(restoreAt),
+          notes,
         },
         null,
         2,
@@ -311,32 +346,21 @@ function cmdApply(args) {
     return;
   }
 
-  fleet.lanes[lane] = { ...wrote };
-  writeJson(FLEET_PATH, fleet);
-
-  doc.active[lane] = {
-    original,
-    position: next,
-    wrote,
-    appliedAt: isoLocal(new Date()),
-    expiresAt: isoLocal(expiresAt),
-    reason: typeof args.reason === "string" ? args.reason : "",
-    taskId: taskIdFor(lane),
-  };
-  delete doc.migratedFrom;
-  writeJson(BACKUPS_PATH, doc);
-
+  // Build the whole result BEFORE touching disk. A throw between the two writes would
+  // otherwise leave the lane advanced while reporting failure — and the caller, seeing
+  // an error, would retry and advance it a second time.
   const remaining = chain.length - 1 - next;
   const spec = {
     lane,
     movedTo: { position: next, of: chain.length - 1, implementer: target.implementer },
     fallbacksRemaining: remaining,
     swapped: { from: laneDials(current), to: wrote },
-    expiresAt: isoLocal(expiresAt),
+    deadUntil,
+    expiresAt: isoLocal(restoreAt),
     scheduledTask: {
       taskId: taskIdFor(lane),
       description: `Restore delegate lane "${lane}" to its primary once the quota window resets`,
-      fireAt: isoLocal(expiresAt),
+      fireAt: isoLocal(restoreAt),
       notifyOnCompletion: true,
       prompt:
         `Run this exact command and report its output verbatim:\n\n` +
@@ -350,6 +374,27 @@ function cmdApply(args) {
       "This is the last entry in the chain. If it also fails there is nowhere left to go — " +
       "consider ending this chain with a free, unmetered model.";
   }
+  if (notes.length) spec.notes = notes;
+
+  // Everything is computed; now commit it. Sidecar last, so a failure between the two
+  // leaves the sidecar describing the older (less advanced) state rather than a
+  // position the fleet config never reached.
+  fleet.lanes[lane] = { ...wrote };
+  writeJson(FLEET_PATH, fleet);
+
+  doc.active[lane] = {
+    original,
+    position: next,
+    wrote,
+    appliedAt: isoLocal(new Date()),
+    expiresAt: isoLocal(restoreAt),
+    deadUntil,
+    reason: typeof args.reason === "string" ? args.reason : "",
+    taskId: taskIdFor(lane),
+  };
+  delete doc.migratedFrom;
+  writeJson(BACKUPS_PATH, doc);
+
   process.stdout.write(`${JSON.stringify(spec, null, 2)}\n`);
 }
 
@@ -398,7 +443,16 @@ function cmdResolve(args) {
     fleet.lanes[lane] = { ...active.original };
     delete doc.active[lane];
     doc.history.push({ ...active, lane, restoredAt: isoLocal(new Date()), outcome: "restored" });
-    restored.push({ lane, to: active.original, fromPosition: active.position, taskId: active.taskId });
+    const entry = { lane, to: active.original, fromPosition: active.position, taskId: active.taskId };
+    // Defensive: --force (or a hand-edited window) can restore onto a primary we know
+    // is still exhausted. Say so rather than let the next dispatch fail mysteriously.
+    const primaryDead = active.deadUntil?.["0"];
+    if (primaryDead && new Date(primaryDead).getTime() > now) {
+      entry.warning =
+        `position 0 is recorded as exhausted until ${primaryDead} — this lane will likely ` +
+        `fail its next dispatch and need advancing again`;
+    }
+    restored.push(entry);
   }
 
   const abandoned = skipped.some((s) => s.why.startsWith("lane changed"));
@@ -447,6 +501,7 @@ function cmdStatus(args) {
     expiresAt: a.expiresAt,
     remaining: humanRemaining(a.expiresAt),
     overdue: new Date(a.expiresAt).getTime() <= Date.now(),
+    deadUntil: a.deadUntil ?? null,
     reason: a.reason,
   }));
 
@@ -480,6 +535,12 @@ function cmdStatus(args) {
           ` → restores to ${a.restoreTo.padEnd(10)} ` +
           `${a.overdue ? "OVERDUE — run: resolve --all" : `in ${a.remaining}`}`,
       );
+      if (a.deadUntil) {
+        const parts = Object.entries(a.deadUntil)
+          .sort(([x], [y]) => Number(x) - Number(y))
+          .map(([pos, iso]) => `${pos}:${humanRemaining(iso)}`);
+        L.push(`      recovers  ${parts.join("   ")}   (restore waits on position 0)`);
+      }
       if (a.reason) L.push(`      reason: ${a.reason}`);
     }
   }
@@ -508,10 +569,18 @@ function cmdStatus(args) {
 
 const USAGE = `delegate-backup — walk a lane down its fallback chain, and put it back later
 
-  apply   --lane <name> --until <71h37m|ISO> [--reason "..."] [--dry-run]
+  apply   --lane <name> --until <71h37m|ISO> [--primary-until <win>]
+          [--reason "..."] [--dry-run]
           Advance the lane one position down its chain. Prints the scheduled-task spec
           to create. Exits ${EXIT.exhausted} only when the chain has no entries left,
           ${EXIT.noChain} when the lane has no chain configured.
+
+          --until is the window of the position that JUST FAILED — the one being left.
+          The restore is scheduled from position 0's window instead, because that is
+          where the lane returns to. Use --primary-until to correct position 0's window
+          if you learn it later (e.g. the primary turns out to be dead for days, not
+          hours). Without this, a short mid-chain window would restore the lane onto a
+          still-exhausted primary.
 
   resolve [--lane <name>] [--all] [--force]
           Return lanes to position 0. --lane restores that lane now (the task fired).

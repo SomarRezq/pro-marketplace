@@ -4,7 +4,7 @@ description: Walk a delegate lane down its fallback chain when an implementer ru
 license: MIT
 compatibility: Requires Node 18+ and a delegate-skills fleet config. Creating the restore task needs the scheduled-tasks tools; without them the swap still works but must be undone manually.
 metadata:
-  version: 2.0.0
+  version: 2.1.0
 ---
 
 # Delegate Backup
@@ -52,6 +52,17 @@ node "<script>" apply --lane <name> --until 71h37m --reason "<the error text>"
 (`2026-09-02T05:29:47+02:00`) — use whichever form the provider gave you. Add
 `--dry-run` to show the user what would change first.
 
+**`--until` describes the position that just failed, not when the lane comes back.**
+Those differ the moment you advance past position 1. A restore returns the lane to
+position 0, so it is scheduled from position 0's window — passing Codex's 5-hour window
+while advancing off Codex does *not* pull the restore forward onto a primary that is
+still exhausted for days. The command reports `deadUntil` per position and prints a note
+when the two differ; relay that note rather than treating it as an error.
+
+If you learn position 0's real window later — the primary turns out to be dead for days,
+not hours — correct it with `--primary-until <window>`. That is the only thing that moves
+the restore time.
+
 Then **create the restore task from the `scheduledTask` object the command printed** —
 its `taskId`, `description`, `fireAt`, `notifyOnCompletion`, and `prompt`, exactly as
 given. Do not rewrite the prompt: a scheduled run starts with no memory of this
@@ -84,9 +95,13 @@ node "<script>" resolve --lane <name>     # this lane now
 node "<script>" resolve --all             # every lane whose window has passed
 ```
 
-Restore always returns the lane to **position 0**, never to an intermediate position. If
-position 0 is still exhausted, the next dispatch fails and you advance again — one wasted
-call, in exchange for a state machine with no hidden per-position bookkeeping.
+Restore always returns the lane to **position 0**, never to an intermediate position —
+which is why the restore is scheduled from position 0's recovery time rather than from
+whatever window you last passed to `--until`.
+
+`resolve --force` bypasses that check. If it puts a lane back on a primary still recorded
+as exhausted, the output carries a `warning` saying so — expect the next dispatch on that
+lane to fail and need advancing again.
 
 After a successful `resolve`, delete the scheduled tasks named in `deleteTaskIds`. Exit
 code 3 means nothing was due — normal, not an error.
