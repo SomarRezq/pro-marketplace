@@ -74,7 +74,7 @@ function findGh() {
 
 const GH = findGh();
 
-function gh(args, { allowFail = false } = {}) {
+function gh(args, { allowFail = false, cwd } = {}) {
   if (!GH) {
     die(
       "the GitHub CLI (gh) was not found. Install it, then run `gh auth login`.\n" +
@@ -82,7 +82,7 @@ function gh(args, { allowFail = false } = {}) {
       EXIT.noGh,
     );
   }
-  const r = spawnSync(GH, args, { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+  const r = spawnSync(GH, args, { encoding: "utf8", maxBuffer: 32 * 1024 * 1024, cwd });
   if (r.error) die(`could not run gh (${r.error.message})`, EXIT.noGh);
   if (r.status !== 0 && !allowFail) {
     die(`gh ${args.slice(0, 3).join(" ")} failed:\n${(r.stderr || r.stdout || "").trim()}`);
@@ -176,11 +176,17 @@ function computeWaves(steps) {
   return steps;
 }
 
-function resolveRepo(args, map) {
+/**
+ * `dir` is the run directory, which lives inside the target repository. gh must be run
+ * from there — not from wherever this script happened to be launched, which is usually
+ * some other checkout entirely.
+ */
+function resolveRepo(args, map, dir) {
   if (typeof args.repo === "string" && args.repo.includes("/")) return args.repo;
   if (map.repo) return map.repo; // recorded at sync — avoids a call on every later command
   const r = gh(["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"], {
     allowFail: true,
+    cwd: dir,
   });
   if (!r.ok || !r.out) {
     die("could not determine the repository — run inside a git repo with a GitHub remote, or pass --repo owner/name");
@@ -221,7 +227,7 @@ function cmdSync(args) {
   const state = loadState(dir);
   const map = loadMap(dir);
   const dryRun = Boolean(args["dry-run"]);
-  const repo = resolveRepo(args, map);
+  const repo = resolveRepo(args, map, dir);
   const plan = loadPlan(dir);
   const slug = state.slug || path.basename(dir);
 
@@ -311,7 +317,7 @@ function cmdStart(args) {
   const map = loadMap(dir);
   const wave = Number(args.wave);
   if (!Number.isFinite(wave)) die("start needs --wave <n>");
-  const repo = resolveRepo(args, map);
+  const repo = resolveRepo(args, map, dir);
 
   const targets = Object.entries(map.steps).filter(
     ([, v]) => v.wave === wave && v.state === "pending" && v.issue,
@@ -341,7 +347,7 @@ function cmdStart(args) {
 function cmdPush(args) {
   const dir = runDir(args);
   const map = loadMap(dir);
-  const repo = resolveRepo(args, map);
+  const repo = resolveRepo(args, map, dir);
 
   let waves;
   if (typeof args.waves === "string") waves = args.waves.split(",").map((n) => Number(n.trim()));
@@ -430,7 +436,7 @@ function cmdList(args) {
 function cmdVerify(args) {
   const dir = runDir(args);
   const map = loadMap(dir);
-  const repo = resolveRepo(args, map);
+  const repo = resolveRepo(args, map, dir);
   const nums = Object.values(map.steps).map((v) => v.issue).filter(Boolean);
   if (!nums.length) die("nothing mirrored yet", EXIT.nothingToDo);
 
