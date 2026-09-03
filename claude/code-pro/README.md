@@ -128,10 +128,17 @@ config, not in this plugin, so retuning the entire pipeline is one file.
 |---|---|---|
 | `feature` | backend / logic steps | `{ "implementer": "opencode", "model": "zai-coding-plan/glm-5.3-flash", "variant": "low" }` |
 | `ui` | UI steps | `{ "implementer": "opencode", "model": "zai-coding-plan/glm-5.3-flash", "variant": "low" }` |
-| `tests` | test-writing steps | `{ "implementer": "codex", "effort": "medium" }` |
-| `review` | per-step review | `{ "implementer": "codex", "readOnly": true, "effort": "high" }` |
+| `tests` | test-writing steps | `{ "implementer": "opencode", "model": "opencode/muse-spark-1.3-contributor-free" }` |
+| `review` | per-step review | `{ "implementer": "codex", "effort": "medium" }` |
 | `qa` | end-to-end QA | `{ "implementer": "codex", "effort": "medium" }` |
 | `docs` | documentation steps | `{ "implementer": "agy", "model": "gpt-oss-120b-medium" }` |
+
+**On `review` and `readOnly`.** The reviewer's report is written by the *relay*, not by the
+implementer — so `readOnly` never blocked it. Setting `readOnly: true` sandboxes the
+reviewer out of your working tree, which is what stops a reviewer quietly fixing what it
+was asked to judge. It is omitted above because that is the current default here, but it
+is the safer setting and worth restoring unless you specifically want the reviewer able to
+edit.
 
 **Spread lanes across independent quota buckets.** The suggestion above uses three: GLM,
 Codex, and Antigravity's GPT-OSS pool. Putting several lanes on one provider is what
