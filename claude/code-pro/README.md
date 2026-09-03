@@ -20,6 +20,8 @@ implementation, test-writing, QA, and per-step review to **Codex** and **Gemini*
 | `/refactor` | refactor | Behavior-preserving restructure, plan approval required |
 | `/create-docs` | create-docs | Accurate docs with workflow charts, investigated not assumed |
 | `/code-pro-doctor` | — | Verify the delegation setup: implementers, lanes, degradations |
+| `/code-pro-issues` | — | Mirror a run onto GitHub: milestone per wave, issue per step |
+| `/code-pro-record-finding` | record-findings | Record a durable lesson about a model or the workflow |
 
 ## The develop-fr pipeline
 

@@ -20,7 +20,7 @@ Browse everything interactively instead: `/plugin`
 
 | Plugin | What it does | Docs |
 |---|---|---|
-| [`code-pro`](claude/code-pro) | Code like a professional senior full-stack developer across the whole development lifecycle — investigate, develop, bug-fix, review, test, refactor, document. Its `develop-fr` pipeline reserves Claude Opus for architecture and delegates implementation, testing, and per-step review to external CLIs. Ships 9 skills, 10 slash commands, and 7 specialized subagents. | [README](claude/code-pro/README.md) · [Spec (DOCX)](docs/Code-pro-Plugin-Specification.docx) · [Refactor plan](docs/REFACTOR-PLAN.md) |
+| [`code-pro`](claude/code-pro) | Code like a professional senior full-stack developer across the whole development lifecycle — investigate, develop, bug-fix, review, test, refactor, document. Its `develop-fr` pipeline reserves Claude Opus for architecture and delegates implementation, testing, and per-step review to external CLIs. Ships 10 skills, 12 slash commands, and 7 specialized subagents. | [README](claude/code-pro/README.md) · [Spec (DOCX)](docs/Code-pro-Plugin-Specification.docx) · [Refactor plan](docs/REFACTOR-PLAN.md) |
 | [`delegate-backup`](claude/delegate-backup) | Keeps a delegation pipeline running when implementers run out of quota. Each lane gets an ordered chain of implementers; the plugin walks one position down per exhaustion and schedules the lane's return for when the provider's window resets. End a chain with a free model and it can never run out of fallbacks. | [README](claude/delegate-backup/README.md) · [Spec (DOCX)](docs/Delegate-backup-Plugin-Specification.docx) |
 
 The two compose: `code-pro` treats `delegate-backup` as a **soft dependency**, so installing

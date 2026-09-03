@@ -25,7 +25,9 @@ you ──▶ ORCHESTRATOR (you — routing only, never reads or writes code)
    │      3e PUSH ....... current branch; closes the pushed waves' issues
    ├─4─ QA .............. lane → Codex
    ├─5─ FINAL REVIEW .... Claude Opus / high     [solution-architect]
-   └─6─ REPORT
+   └─6─ REPORT .......... + record a finding, only if the run earned one
+
+   throughout: context past ~50% → compact with intent, then re-read the digest
 ```
 
 ## Read first
@@ -204,7 +206,38 @@ ticket are linked. The relays never commit — that is yours.
 node "$S/state.mjs" checkpoint --run "$RUN"
 ```
 
-Tell the user it is safe to `/compact`, then keep going — don't wait for an answer.
+### Context discipline — compact at 50%, and compact *with intent*
+
+This pipeline is built so that compaction is safe: the plan, every step's status, the
+briefs and the results all live in `$RUN` on disk, not in the conversation. Losing the
+conversation loses nothing that matters. **So compact early rather than late** — a run
+that hits the wall mid-wave is far more disruptive than one that compacts at a checkpoint.
+
+**When context passes ~50%, say so and hand the user a focused instruction.** A bare
+`/compact` keeps whatever the summariser thinks is interesting, which is often the last
+noisy dispatch rather than the goal. Give it the goal explicitly:
+
+```
+Context is over 50% and we're at a checkpoint — good moment to compact.
+
+/compact Keep: the run directory $RUN, the feature goal from 00-request.md, the numbered
+plan with each step's status, which steps are in flight and with which implementer, the
+definition of done for anything unfinished, and any unresolved review findings. Drop:
+dispatch chatter, tool output, and the contents of files already written.
+```
+
+Then **keep working — do not wait for an answer.** Compaction is the user's call and
+their timing; stalling the pipeline on it wastes the window you were trying to protect.
+
+**After any compaction, re-orient from disk before dispatching anything:**
+
+```bash
+node "$S/state.mjs" digest --run "$RUN"
+```
+
+That restores the plan, the statuses and what is ready — authoritatively, not from
+memory. Never resume a run from a recollection of what you were doing; the digest is the
+source of truth and it costs one command.
 
 **3e — push, and close what you pushed.** Only when the user says the work can go. Some
 waves are complete but not safely pushable alone; those wait and go out together with a
@@ -273,6 +306,28 @@ Add a one-line delegation summary — which steps went to which model — so the
 where their Claude usage actually went. Then `state.mjs phase --to done`.
 
 Commit only if the user asks.
+
+### Record a finding — only if the run earned one
+
+Now ask once: **did anything happen in this run that should change how lanes or models are
+configured in future?**
+
+Load the `record-findings` skill **only if the answer is yes.** Its bar:
+
+- a lane that still got the work wrong after two rework rounds and had to escalate
+- a quota window that vanished far faster than expected, or one lane starving others on
+  the same provider
+- a model that ignored an explicit constraint in its brief
+- a fallback position that was missing, retired, or erroring when it was needed
+- a model behaving materially differently from what the logs already claim
+
+**Most runs meet none of these, and that is the normal outcome.** A single rework round,
+one slow dispatch, or a quota wall arriving on schedule are all the process working —
+recording them turns the logs into noise nobody reads. If nothing qualifies, say nothing
+and finish.
+
+Never write to the logs without loading the skill first; it carries the format, the
+source-marking rules, and which of the two files an entry belongs in.
 
 ## Resuming
 
